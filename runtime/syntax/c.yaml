@@ -15,6 +15,10 @@ rules:
     - statement: "\\b(goto|continue|break|return)\\b"
     - statement: "\\b(asm|fortran)\\b"
     - preproc: "^[[:space:]]*#[[:space:]]*(define|embed|pragma|include|(un|ifn?)def|endif|el(if|ifdef|ifndef|se)|if|line|warning|error|__has_include|__has_embed|__has_c_attribute)"
+    - include:
+        groups: "^[[:space:]]*(#[[:space:]]*include)[[:space:]]+(<[^>]+>)"
+        1: preproc
+        2: constant.string
     - preproc: "^[[:space:]]*_Pragma\\b"
       # GCC builtins
     - statement: "__attribute__[[:space:]]*\\(\\([^)]*\\)\\)"

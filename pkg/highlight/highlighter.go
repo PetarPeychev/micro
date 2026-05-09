@@ -110,6 +110,18 @@ func findAllIndex(regex *regexp.Regexp, str []byte) [][]int {
 	return matches
 }
 
+func findAllSubmatchIndex(regex *regexp.Regexp, str []byte) [][]int {
+	matches := regex.FindAllSubmatchIndex(str, -1)
+	for i, m := range matches {
+		for j := range m {
+			if m[j] >= 0 {
+				matches[i][j] = runePos(m[j], str)
+			}
+		}
+	}
+	return matches
+}
+
 func (h *Highlighter) highlightRegion(highlights LineMatch, start int, canMatchEnd bool, lineNum int, line []byte, curRegion *region, statesOnly bool) LineMatch {
 	lineLen := CharacterCount(line)
 	if start == 0 {
@@ -165,6 +177,22 @@ func (h *Highlighter) highlightRegion(highlights LineMatch, start int, canMatchE
 						if (endLoc == nil) || (m[0] < endLoc[0]) {
 							for i := m[0]; i < m[1]; i++ {
 								fullHighlights[i] = p.group
+							}
+						}
+					}
+				}
+			}
+			for _, cp := range curRegion.rules.capturePatterns {
+				matches := findAllSubmatchIndex(cp.regex, line)
+				for _, m := range matches {
+					if (endLoc == nil) || (m[0] < endLoc[0]) {
+						for groupIdx, group := range cp.groups {
+							startIdx := groupIdx * 2
+							endIdx := startIdx + 1
+							if endIdx < len(m) && m[startIdx] >= 0 {
+								for i := m[startIdx]; i < m[endIdx]; i++ {
+									fullHighlights[i] = group
+								}
 							}
 						}
 					}
@@ -247,6 +275,20 @@ func (h *Highlighter) highlightEmptyRegion(highlights LineMatch, start int, canM
 		for _, m := range matches {
 			for i := m[0]; i < m[1]; i++ {
 				fullHighlights[i] = p.group
+			}
+		}
+	}
+	for _, cp := range h.Def.rules.capturePatterns {
+		matches := findAllSubmatchIndex(cp.regex, line)
+		for _, m := range matches {
+			for groupIdx, group := range cp.groups {
+				startIdx := groupIdx * 2
+				endIdx := startIdx + 1
+				if endIdx < len(m) && m[startIdx] >= 0 {
+					for i := m[startIdx]; i < m[endIdx]; i++ {
+						fullHighlights[i] = group
+					}
+				}
 			}
 		}
 	}

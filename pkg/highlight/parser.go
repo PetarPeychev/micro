@@ -65,12 +65,20 @@ type pattern struct {
 	regex *regexp.Regexp
 }
 
+// A capturePattern is a syntax rule that uses regex capture groups
+// to assign different highlight groups to different parts of the match
+type capturePattern struct {
+	regex  *regexp.Regexp
+	groups map[int]Group // capture group index -> highlight group
+}
+
 // rules defines which patterns and regions can be used to highlight
 // a filetype
 type rules struct {
-	regions  []*region
-	patterns []*pattern
-	includes []string
+	regions         []*region
+	patterns        []*pattern
+	capturePatterns []*capturePattern
+	includes        []string
 }
 
 // A region is a highlighted region (such as a multiline comment, or a string)
@@ -311,6 +319,7 @@ func resolveIncludesInDef(files []*File, d *Def) {
 				searchDef, _ := ParseDef(searchFile, nil)
 				d.rules.patterns = append(d.rules.patterns, searchDef.rules.patterns...)
 				d.rules.regions = append(d.rules.regions, searchDef.rules.regions...)
+				d.rules.capturePatterns = append(d.rules.capturePatterns, searchDef.rules.capturePatterns...)
 			}
 		}
 	}
@@ -327,6 +336,7 @@ func resolveIncludesInRegion(files []*File, region *region) {
 				searchDef, _ := ParseDef(searchFile, nil)
 				region.rules.patterns = append(region.rules.patterns, searchDef.rules.patterns...)
 				region.rules.regions = append(region.rules.regions, searchDef.rules.regions...)
+				region.rules.capturePatterns = append(region.rules.capturePatterns, searchDef.rules.capturePatterns...)
 			}
 		}
 	}
@@ -377,12 +387,21 @@ func parseRules(input []any, curRegion *region) (ru *rules, err error) {
 					ru.patterns = append(ru.patterns, &pattern{groupNum, r})
 				}
 			case map[any]any:
-				// region
-				region, err := parseRegion(group.(string), object, curRegion)
-				if err != nil {
-					return nil, err
+				if _, ok := object["groups"]; ok {
+					// capture group pattern
+					cp, err := parseCapturePattern(object)
+					if err != nil {
+						return nil, err
+					}
+					ru.capturePatterns = append(ru.capturePatterns, cp)
+				} else {
+					// region
+					region, err := parseRegion(group.(string), object, curRegion)
+					if err != nil {
+						return nil, err
+					}
+					ru.regions = append(ru.regions, region)
 				}
-				ru.regions = append(ru.regions, region)
 			default:
 				return nil, fmt.Errorf("Bad type %T", object)
 			}
@@ -490,4 +509,48 @@ func parseRegion(group string, regionInfo map[any]any, prevRegion *region) (r *r
 	}
 
 	return r, nil
+}
+
+func parseCapturePattern(info map[any]any) (*capturePattern, error) {
+	cp := new(capturePattern)
+
+	groupsStr, ok := info["groups"].(string)
+	if !ok || groupsStr == "" {
+		return nil, fmt.Errorf("Invalid or empty groups pattern")
+	}
+
+	var err error
+	cp.regex, err = regexp.Compile(groupsStr)
+	if err != nil {
+		return nil, err
+	}
+
+	cp.groups = make(map[int]Group)
+	for k, v := range info {
+		if k == "groups" {
+			continue
+		}
+
+		idx, ok := k.(int)
+		if !ok {
+			return nil, fmt.Errorf("Invalid capture group key: %v", k)
+		}
+
+		groupStr, ok := v.(string)
+		if !ok || groupStr == "" {
+			return nil, fmt.Errorf("Invalid group name for capture %d", idx)
+		}
+
+		if _, ok := Groups[groupStr]; !ok {
+			numGroups++
+			Groups[groupStr] = numGroups
+		}
+		cp.groups[idx] = Groups[groupStr]
+	}
+
+	if len(cp.groups) == 0 {
+		return nil, fmt.Errorf("No capture groups defined")
+	}
+
+	return cp, nil
 }
